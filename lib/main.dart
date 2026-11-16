@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,7 @@ import 'screens/car_vision_screen.dart';
 import 'screens/guided_inspection_screen.dart';
 import 'screens/oil_check_screen.dart';
 import 'screens/maintenance_history_screen.dart';
-import 'screens/anchored_ar_screen.dart';
+import 'screens/consumption_screen.dart';
 
 late LocalRepository repository;
 final appProvider = ChangeNotifierProvider<AppController>(
@@ -31,7 +32,10 @@ class AppController extends ChangeNotifier {
       restriction = repo.restriction,
       pads = repo.pads,
       fluid = repo.fluid,
-      oils = repo.oils;
+      oils = repo.oils,
+      inspections = repo.inspections,
+      consumptionProfiles = repo.consumptionProfiles,
+      fuelLogs = repo.fuelLogs;
   final LocalRepository repo;
   Vehicle? vehicle;
   OilChange? oil;
@@ -39,6 +43,9 @@ class AppController extends ChangeNotifier {
   List<BrakePadChange> pads;
   List<BrakeFluidChange> fluid;
   List<OilChange> oils;
+  List<InspectionRecord> inspections;
+  List<ConsumptionProfile> consumptionProfiles;
+  List<FuelLog> fuelLogs;
   Future<void> setVehicle(Vehicle v) async {
     vehicle = v;
     await repo.saveVehicle(v);
@@ -70,6 +77,13 @@ class AppController extends ChangeNotifier {
     await repo.saveFluid(fluid);
     notifyListeners();
   }
+  Future<void> addInspection(InspectionRecord v) async {
+    inspections = [v, ...inspections];
+    await repo.saveInspections(inspections);
+    notifyListeners();
+  }
+  Future<void> saveConsumptionProfile(ConsumptionProfile v) async { consumptionProfiles = [...consumptionProfiles.where((p) => !(p.brand.toLowerCase() == v.brand.toLowerCase() && p.model.toLowerCase() == v.model.toLowerCase())), v]; await repo.saveConsumptionProfiles(consumptionProfiles); notifyListeners(); }
+  Future<void> addFuelLog(FuelLog v) async { fuelLogs = [...fuelLogs, v]..sort((a, b) => a.odometer.compareTo(b.odometer)); await repo.saveFuelLogs(fuelLogs); notifyListeners(); }
 }
 
 class MyCarApp extends StatelessWidget {
@@ -81,10 +95,7 @@ class MyCarApp extends StatelessWidget {
     theme: AppTheme.build(Brightness.light),
     darkTheme: AppTheme.build(Brightness.dark),
     themeMode: ThemeMode.dark,
-    builder: (context, child) => MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
-      child: child!,
-    ),
+    builder: (context, child) => child!,
     home: const AppShell(),
   );
 }
@@ -100,47 +111,76 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const RedesignedDashboard(),
+      RedesignedDashboard(onNavigate: (index) => setState(() => tab = index)),
       const VehiclePage(),
       const MaintenanceHistoryPage(),
       const SettingsPage(),
     ];
     return Scaffold(
       body: SafeArea(child: pages[tab]),
-      floatingActionButton: tab == 0
-          ? FloatingActionButton(
-              onPressed: () => _quickAdd(context),
-              backgroundColor: AppTheme.teal,
-              foregroundColor: Colors.white,
-              child: const Icon(CupertinoIcons.plus),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        height: 78,
-        backgroundColor: const Color(0xEE102B31),
-        indicatorColor: AppTheme.teal.withValues(alpha: .18),
-        labelTextStyle: WidgetStatePropertyAll(TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: tab,
-        onDestinationSelected: (v) => setState(() => tab = v),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(CupertinoIcons.house),
-            label: 'Inicio',
-          ),
-          NavigationDestination(
-            icon: Icon(CupertinoIcons.car_detailed),
-            label: 'Mi vehículo',
-          ),
-          NavigationDestination(
-            icon: Icon(CupertinoIcons.wrench),
-            label: 'Mantenimiento',
-          ),
-          NavigationDestination(
-            icon: Icon(CupertinoIcons.gear),
-            label: 'Ajustes',
-          ),
-        ],
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        child: Stack(clipBehavior: Clip.none, alignment: Alignment.center,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xCC102B31),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withValues(alpha: .14)),
+                    boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 22, offset: Offset(0, 8))],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _navItem(CupertinoIcons.house, 'Inicio', 0),
+                      _navItem(CupertinoIcons.car_detailed, 'Vehículo', 1),
+                      const SizedBox(width: 58),
+                      _navItem(CupertinoIcons.wrench, 'Estado', 2),
+                      _navItem(CupertinoIcons.gear, 'Ajustes', 3),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: -16,
+              child: Material(
+                color: AppTheme.teal,
+                elevation: 8,
+                shadowColor: Colors.black54,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _quickAdd(context),
+                  child: const SizedBox(width: 58, height: 58, child: Icon(CupertinoIcons.plus, color: Colors.white, size: 28)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(IconData icon, String label, int destination) {
+    final selected = tab == destination;
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: () => setState(() => tab = destination),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(color: selected ? AppTheme.teal.withValues(alpha: .18) : Colors.transparent, borderRadius: BorderRadius.circular(22)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: selected ? AppTheme.teal : Colors.white70, size: 22),
+          const SizedBox(height: 3),
+          Text(label, style: TextStyle(color: selected ? Colors.white : Colors.white70, fontSize: 10, fontWeight: FontWeight.w700)),
+        ]),
       ),
     );
   }
@@ -156,18 +196,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         shrinkWrap: true,
         padding: const EdgeInsets.only(bottom: 10),
         children: [
-          ListTile(
-            leading: const Icon(
-              CupertinoIcons.viewfinder_circle_fill,
-              color: AppTheme.teal,
-            ),
-            title: const Text('Realidad aumentada'),
-            subtitle: const Text('Fija alertas en el espacio'),
-            onTap: () {
-              Navigator.pop(context);
-              openAnchoredAr(context);
-            },
-          ),
           ListTile(
             leading: const Icon(
               CupertinoIcons.camera_fill,
